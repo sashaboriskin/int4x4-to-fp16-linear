@@ -34,11 +34,13 @@ def _quant_pack(
     ptrs = x_ptr + pid_m * stride_x_m + base_cols * stride_x_n
     vals = tl.load(ptrs, mask=mask_cols, other=0.0).to(tl.float32)
 
-    # baseline rounding-to-nearest (simple)
+    # ties-to-even rounding for halves; clamp to [-8, 7]
     x = vals / scales
-    qf = tl.math.round(x)
-    qf = tl.maximum(tl.minimum(qf, 7.0), -8.0)
-    q = qf.to(tl.int32) + 8
+    f = tl.math.floor(x)
+    r = tl.math.floor(x + 0.5)
+    is_half = (x - f) == 0.5
+    r_adj = tl.where(is_half & ((r.to(tl.int32) & 1) == 1), r - 1.0, r)
+    q = tl.maximum(tl.minimum(r_adj, 7.0), -8.0).to(tl.int32) + 8
 
     shifts = (tl.arange(0, elems_per_pack)[None, :] * 4).to(tl.int32)
     nibbles = (q & 0xF) << shifts
@@ -82,6 +84,7 @@ def dequantize_i4_pack8(packed: torch.Tensor, scales: torch.Tensor) -> torch.Ten
     K = num_packs * elems_per_pack
     out = torch.empty((M, K), dtype=torch.float32, device=packed.device)
     data = packed.to(torch.int32)
+    # lanes write into columns lane, lane+L, ...
     for lane in range(elems_per_pack):
         shift = lane * 4
         vals = (data >> shift) & 0xF
