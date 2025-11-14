@@ -14,5 +14,5 @@ def matmul_bf16_i4(
     if a.dtype != torch.bfloat16:
         raise TypeError("expected bf16 activations")
     a16 = a.to(torch.float16)
-    w = dequantize_i4_pack8(b_packed, scales).to(torch.float16)
+    w = dequantize_i4_pack8(b_packed, scales, pack_dtype=pack_dtype).to(torch.float16)
     return torch.matmul(a16, w.t()).to(torch.float32)
