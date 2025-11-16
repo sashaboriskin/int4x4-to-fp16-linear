@@ -1,10 +1,10 @@
-from typing import Tuple
+from typing import Literal, Tuple
 
 import torch
 import triton
 import triton.language as tl
 
-DTYPE_TO_PACK = {"int32": 8}
+DTYPE_TO_PACK = {"int8": 2, "int32": 8}
 EPS = 1e-8
 
 @triton.jit
@@ -50,6 +50,7 @@ def _quant_pack(
 
 def quantize_i4_pack8(
     x: torch.Tensor,
+    pack_dtype: Literal["int8", "int32"] = "int32",
     block_packs: int = 32,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     if x.dtype != torch.float16:
@@ -57,7 +58,7 @@ def quantize_i4_pack8(
     if not x.is_contiguous():
         x = x.contiguous()
     M, N = x.shape
-    elems_per_pack = DTYPE_TO_PACK["int32"]
+    elems_per_pack = DTYPE_TO_PACK[pack_dtype]
     if N % elems_per_pack != 0:
         raise ValueError("cols must align to pack size")
     num_packs = N // elems_per_pack
@@ -65,7 +66,8 @@ def quantize_i4_pack8(
     scales = (
         x32.abs().view(M, num_packs, elems_per_pack).amax(dim=2).clamp_min(EPS) / 7.0
     ).contiguous()
-    out = torch.empty((M, num_packs), dtype=torch.int32, device=x.device)
+    out_dtype = torch.int8 if pack_dtype == "int8" else torch.int32
+    out = torch.empty((M, num_packs), dtype=out_dtype, device=x.device)
     grid = (M, triton.cdiv(num_packs, block_packs))
     _quant_pack[grid](
         x, scales, out,
@@ -78,8 +80,8 @@ def quantize_i4_pack8(
     )
     return out, scales
 
-def dequantize_i4_pack8(packed: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
-    elems_per_pack = DTYPE_TO_PACK["int32"]
+def dequantize_i4_pack8(packed: torch.Tensor, scales: torch.Tensor, pack_dtype: Literal["int8","int32"]="int32") -> torch.Tensor:
+    elems_per_pack = DTYPE_TO_PACK[pack_dtype]
     M, num_packs = packed.shape
     K = num_packs * elems_per_pack
     out = torch.empty((M, K), dtype=torch.float32, device=packed.device)
