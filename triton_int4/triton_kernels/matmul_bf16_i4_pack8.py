@@ -50,9 +50,9 @@ def matmul_bf16_i4(
     b_packed: torch.Tensor,
     scales: torch.Tensor,
     pack_dtype: Literal["int8", "int32"] = "int32",
-    block_m: int = 128,
-    block_n: int = 128,
-    block_k: int = 128,
+    block_m: int = 64,
+    block_n: int = 64,
+    block_k: int = 64,
 ) -> torch.Tensor:
     """Computes A(bf16) @ (dequantize_i4(B, scales))^T with per-pack scales."""
     if a.dtype != torch.bfloat16:
