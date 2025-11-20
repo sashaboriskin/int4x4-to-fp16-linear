@@ -12,3 +12,11 @@ Implementation of the linear layer with packaging  (int4)x4 in FP16
 Количество строк (токенов) в матрице активаций X: 128, 512, 2048
 4) С использованием написанных кернелей написать квантизованный линейный слой и применить его к линейныс слоям модели Llama-3.2-1B-Instruct
 5) Замерить скорость расчета и уровень перплексии на wikitext2
+
+# Setup guide
+```
+sudo apt-get update
+sudo apt-get install -y python3.10-dev
+
+poetry install
+```
