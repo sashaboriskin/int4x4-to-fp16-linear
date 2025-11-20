@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from triton_int4.quant_layer import Int4PackedLinear, replace_linear_with_int4
-from triton_int4.triton_kernels.quant_i4_pack8 import (dequantize_i4_pack8, quantize_i4_pack8)
+from triton_int4.triton_kernels.quant_i4_pack8 import dequantize_i4_pack8, quantize_i4_pack8
 from triton_int4.triton_kernels.matmul_bf16_i4_pack8 import matmul_bf16_i4
 
 @pytest.fixture(scope="module")
@@ -52,3 +52,12 @@ def test_replace_linear_recursively(device):
         if module is model:
             continue
         assert not isinstance(module, torch.nn.Linear)
+
+def test_matmul_matches_fp16(device):
+    a = torch.randn(8, 256, dtype=torch.bfloat16, device=device)
+    w = torch.randn(128, 256, dtype=torch.float16, device=device)
+    packed, scales = quantize_i4_pack8(w)
+    out_int4 = matmul_bf16_i4(a, packed, scales)
+    out_ref = torch.matmul(a.to(torch.float16), w.t()).to(torch.float32)
+    max_err = (out_int4 - out_ref).abs().max()
+    assert max_err < 0.5
