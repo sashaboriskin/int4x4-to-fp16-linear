@@ -116,7 +116,6 @@ def quantize_i4_pack8(
         / 7.0
     ).contiguous()  # [M, num_groups]
 
-    # output buffer: still one int per pack
     if pack_dtype == "int8":
         out = torch.empty((M, num_packs), dtype=torch.int8, device=x.device)
     else:
@@ -138,7 +137,6 @@ def quantize_i4_pack8(
         block_packs=block_packs,
         packs_per_group=packs_per_group,
     )
-    # NOTE: scales is [M, num_groups] (group-wise), not per-pack
     return out, scales
 
 
@@ -164,25 +162,25 @@ def dequantize_i4_pack8(
     if K % num_groups != 0:
         raise ValueError("K must be divisible by number of groups in scales")
 
-    group_size = K // num_groups  # columns per group
+    group_size = K // num_groups
     out = torch.empty((M, K), dtype=torch.float32, device=packed.device)
 
     data = packed.to(torch.int32)  # [M, num_packs]
 
     # build per-column scales: [M, K]
     device = packed.device
-    col_idx = torch.arange(K, device=device)  # 0..K-1
-    group_idx = col_idx // group_size        # 0..num_groups-1
-    scale_cols = scales[:, group_idx]        # [M, K]
+    col_idx = torch.arange(K, device=device)
+    group_idx = col_idx // group_size
+    scale_cols = scales[:, group_idx]
 
-    pack_idx = torch.arange(num_packs, device=device)  # 0..num_packs-1
+    pack_idx = torch.arange(num_packs, device=device)
 
     # decode each lane (nibble) into its column positions
     for lane in range(elems_per_pack):
         shift = lane * 4
-        vals = (data >> shift) & 0xF            # [M, num_packs], 0..15
-        q = vals.to(torch.float32) - 8.0        # [-8..7]
-        cols = pack_idx * elems_per_pack + lane # [num_packs], column indices
+        vals = (data >> shift) & 0xF
+        q = vals.to(torch.float32) - 8.0
+        cols = pack_idx * elems_per_pack + lane
         out[:, cols] = q * scale_cols[:, cols]
 
     return out
